@@ -1,0 +1,16 @@
+export const imagePaths = {
+  sunYellow: require('@/assets/images/png/sun-yellow.png'),
+  sunWhite: require('@/assets/images/png/sun-white.png'),
+  moonYellow: require('@/assets/images/png/moon-yellow.png'),
+  moonWhite: require('@/assets/images/png/moon-white.png'),
+  homeWhite: require('@/assets/images/png/home-white.png'),
+  homeYellow: require('@/assets/images/png/home-yellow.png'),
+  historyWhite: require('@/assets/images/png/history-white.png'),
+  historyYellow: require('@/assets/images/png/history-yellow.png'),
+  expandArrow: require('@/assets/images/png/expand-arrow.png'),
+  play: require('@/assets/images/png/play.png'),
+  pause: require('@/assets/images/png/pause.png'),
+  restart: require('@/assets/images/png/restart.png'),
+  plus: require('@/assets/images/png/plus.png'),
+  delete: require('@/assets/images/png/delete.png'),
+};
