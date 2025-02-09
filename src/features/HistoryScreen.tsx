@@ -1,4 +1,4 @@
-import React, {useState, useEffect, useContext} from 'react';
+import React, {useState, useEffect, useCallback, useContext} from 'react';
 import {
   View,
   Text,
@@ -13,6 +13,7 @@ import colors from '@/config/locals/colors.locals';
 import AddTimerModal from '@/components/modals/AddTimerModal';
 import TimerHeader from '@/components/TimerHeader';
 import {ThemeContext} from '@/context/ThemeContext'; // ✅ Import ThemeContext
+import {useFocusEffect} from '@react-navigation/native';
 
 export default function HistoryScreen() {
   const {theme} = useContext(ThemeContext); // ✅ Get theme context
@@ -20,26 +21,32 @@ export default function HistoryScreen() {
 
   const [expandedTimer, setExpandedTimer] = useState(null);
   const [isModalVisible, setIsModalVisible] = useState(false);
-  const [completedTimers, setCompletedTimers] = useState([]);
+  const [completedTimers, setCompletedTimers] = useState([]); // useState
   const [selectedCategory, setSelectedCategory] = useState('All');
 
-  // Fetch completed timers from AsyncStorage
-  useEffect(() => {
-    const fetchTimers = async () => {
-      const storedTimers = await AsyncStorage.getItem('timers');
-      if (storedTimers) {
-        const parsedTimers = JSON.parse(storedTimers);
-        const filteredTimers = parsedTimers.filter(
-          timer => timer.status === 'completed',
-        );
-        setCompletedTimers(filteredTimers);
-      }
-    };
+  useFocusEffect(
+    useCallback(() => {
+      const fetchTimers = async () => {
+        try {
+          const storedTimers = await AsyncStorage.getItem('timers');
+          if (storedTimers) {
+            const parsedTimers = JSON.parse(storedTimers);
+            const filteredTimers = parsedTimers.filter(
+              timer => timer.status === 'completed',
+            );
+            setCompletedTimers(filteredTimers);
+          }
+        } catch (error) {
+          console.error('Error fetching timers:', error);
+        }
+      };
 
-    fetchTimers();
-  }, []);
+      fetchTimers();
 
-  // ✅ Filter timers based on selected category
+      return () => {};
+    }, []),
+  );
+
   const filteredTimers =
     selectedCategory === 'All'
       ? completedTimers

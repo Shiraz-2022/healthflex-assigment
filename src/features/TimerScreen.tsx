@@ -1,4 +1,5 @@
-import React, {useState, useEffect, useContext, useRef} from 'react';
+// TimerScreen.js
+import React, {useState, useEffect, useRef, useContext} from 'react';
 import {
   View,
   Text,
@@ -23,21 +24,37 @@ export default function TimerScreen() {
 
   const [expandedTimer, setExpandedTimer] = useState(null);
   const [isModalVisible, setIsModalVisible] = useState(false);
-  const [timers, setTimers] = useState<ITimer[]>([]);
+  const [timers, setTimers] = useState<ITimer[]>([]); //  Use useState
   const [selectedCategory, setSelectedCategory] = useState('All');
   const [isGlobalPaused, setIsGlobalPaused] = useState(false);
-  const intervalRefs = useRef<{[key: string]: NodeJS.Timeout}>({});
+  const intervalRefs = useRef({});
 
   useEffect(() => {
     const loadTimers = async () => {
-      const storedTimers = await AsyncStorage.getItem('timers');
-      if (storedTimers) {
-        setTimers(JSON.parse(storedTimers));
+      try {
+        const storedTimers = await AsyncStorage.getItem('timers');
+        if (storedTimers) {
+          setTimers(JSON.parse(storedTimers));
+        }
+      } catch (error) {
+        console.error('Error loading timers:', error);
       }
     };
 
     loadTimers();
   }, []);
+
+  useEffect(() => {
+    const saveTimers = async () => {
+      try {
+        await AsyncStorage.setItem('timers', JSON.stringify(timers));
+      } catch (error) {
+        console.error('Error saving timers:', error);
+      }
+    };
+
+    saveTimers();
+  }, [timers]);
 
   // Filters timers based on selected category
   const filteredTimers =
@@ -58,7 +75,7 @@ export default function TimerScreen() {
   };
 
   // Deletes a timer and clears its interval
-  const handleDelete = async (timerId: string) => {
+  const handleDelete = async timerId => {
     if (intervalRefs.current[timerId]) {
       clearInterval(intervalRefs.current[timerId]);
       delete intervalRefs.current[timerId];
@@ -70,42 +87,75 @@ export default function TimerScreen() {
   };
 
   const pauseAllTimers = async () => {
+    setIsGlobalPaused(true); // Set global pause state immediately
+
+    // Stop all intervals
     Object.values(intervalRefs.current).forEach(clearInterval);
     intervalRefs.current = {}; // Clear all interval references
 
-    setIsGlobalPaused(true);
-
-    const updatedTimers = timers.map(timer =>
-      timer.status === 'running' ? {...timer, status: 'paused'} : timer,
-    );
+    // Update timers to paused state
+    const updatedTimers = timers.map(timer => ({
+      ...timer,
+      status: timer.status === 'running' ? 'paused' : timer.status || 'paused', // Only change if running
+    }));
 
     setTimers(updatedTimers);
     await AsyncStorage.setItem('timers', JSON.stringify(updatedTimers));
   };
 
   const startAllTimers = async () => {
-    setIsGlobalPaused(false);
+    setIsGlobalPaused(false); // Set global pause state immediately
 
     const updatedTimers = timers.map(timer => {
       if (timer.status === 'paused' && timer.remainingTime > 0) {
-        if (!intervalRefs.current[timer.id]) {
-          intervalRefs.current[timer.id] = setInterval(() => {
-            setTimers(prevTimers =>
-              prevTimers.map(t =>
-                t.id === timer.id && t.remainingTime > 0
-                  ? {...t, remainingTime: t.remainingTime - 1}
-                  : t,
-              ),
-            );
-          }, 1000);
-        }
-        return {...timer, status: 'running'};
+        // Start timer only if paused and has remaining time
+        return {...timer, status: 'running'}; // Immediately set status to running
       }
       return timer;
     });
 
     setTimers(updatedTimers);
     await AsyncStorage.setItem('timers', JSON.stringify(updatedTimers));
+  };
+
+  useEffect(() => {
+    // Start timers that are marked as running after the state has been updated
+    timers.forEach(timer => {
+      if (timer.status === 'running' && !intervalRefs.current[timer.id]) {
+        startIndividualTimer(timer);
+      }
+    });
+  }, [timers]); // Effect runs whenever timers change
+
+  const startIndividualTimer = timer => {
+    if (intervalRefs.current[timer.id]) {
+      return; // Prevent duplicate intervals
+    }
+
+    intervalRefs.current[timer.id] = setInterval(() => {
+      setTimers(prevTimers => {
+        return prevTimers.map(t => {
+          if (t.id === timer.id) {
+            if (t.remainingTime > 0) {
+              return {...t, remainingTime: t.remainingTime - 1};
+            } else {
+              // Timer has completed
+              clearInterval(intervalRefs.current[timer.id]); // Clear interval
+              delete intervalRefs.current[timer.id]; // Remove interval ref
+              return {...t, status: 'completed'}; // Mark as completed
+            }
+          }
+          return t;
+        });
+      });
+    }, 1000);
+  };
+
+  const stopIndividualTimer = timer => {
+    if (intervalRefs.current[timer.id]) {
+      clearInterval(intervalRefs.current[timer.id]);
+      delete intervalRefs.current[timer.id];
+    }
   };
 
   return (
@@ -142,6 +192,8 @@ export default function TimerScreen() {
               expandedTimer={expandedTimer}
               onDelete={() => handleDelete(timer.id)}
               isGlobalPaused={isGlobalPaused}
+              startIndividualTimer={startIndividualTimer}
+              stopIndividualTimer={stopIndividualTimer} // Pass the new function
             />
           ))
         )}

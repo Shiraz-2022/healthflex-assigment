@@ -1,5 +1,14 @@
+// TimerCard.js
 import React, {useEffect, useState, useRef} from 'react';
-import {View, Text, TouchableOpacity, Image, Switch, Alert} from 'react-native';
+import {
+  View,
+  Text,
+  TouchableOpacity,
+  Image,
+  Switch,
+  Alert,
+  AppState,
+} from 'react-native'; // Import AppState
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as Progress from 'react-native-progress';
 import styles from '@/styles/styles';
@@ -11,90 +20,70 @@ export default function TimerCard({
   setTimers,
   expandedTimer,
   isGlobalPaused,
+  onDelete,
+  startIndividualTimer,
+  stopIndividualTimer, // Receive the new prop
 }) {
   const [remainingTime, setRemainingTime] = useState(timer.remainingTime);
   const [isRunning, setIsRunning] = useState(timer.status === 'running');
-  const [wasRunningBeforePause, setWasRunningBeforePause] = useState(false);
   const [halfAlert, setHalfAlert] = useState(false);
-  const intervalRef = useRef(null);
 
   useEffect(() => {
-    if (isGlobalPaused) {
-      if (isRunning) {
-        setWasRunningBeforePause(true);
-        stopTimer();
-        setIsRunning(false);
+    const loadTimerState = async () => {
+      try {
+        const storedTimerState = await AsyncStorage.getItem(timer.id);
+        if (storedTimerState) {
+          const {
+            remainingTime: storedRemainingTime,
+            isRunning: storedIsRunning,
+          } = JSON.parse(storedTimerState);
+          setRemainingTime(storedRemainingTime);
+          setIsRunning(storedIsRunning);
+        }
+      } catch (error) {
+        console.error('Error loading timer state:', error);
       }
-    } else {
-      if (wasRunningBeforePause) {
-        startTimer();
-        setIsRunning(true);
-      }
-    }
-  }, [isGlobalPaused]);
+    };
+
+    loadTimerState();
+  }, [timer.id]);
+
+  useEffect(() => {
+    setRemainingTime(timer.remainingTime); // Initialize or update remainingTime
+  }, [timer.remainingTime]);
+
+  useEffect(() => {
+    setIsRunning(timer.status === 'running'); // Sync running status
+  }, [timer.status]);
 
   useEffect(() => {
     if (halfAlert && remainingTime === Math.floor(timer.duration / 2)) {
       Alert.alert('Halfway Alert', `You're halfway through ${timer.name}!`);
     }
-  }, [remainingTime]);
+  }, [remainingTime, halfAlert, timer.name, timer.duration]);
 
   const toggleTimer = async () => {
-    if (!isRunning) {
-      startTimer();
-      setIsRunning(true);
-      setWasRunningBeforePause(false); // Reset manual tracking
-      await updateTimerInStorage(remainingTime, 'running');
+    if (isRunning) {
+      await stopTimer();
     } else {
-      stopTimer();
-      setIsRunning(false);
-      await updateTimerInStorage(remainingTime, 'paused');
+      startIndividualTimer(timer);
+      await updateTimerInStorage(remainingTime, 'running');
+      setIsRunning(true);
     }
   };
 
-  const startTimer = () => {
-    if (intervalRef.current) return; // Prevent duplicate intervals
-
-    intervalRef.current = setInterval(() => {
-      setRemainingTime(prev => {
-        if (prev > 0) {
-          updateTimerInStorage(prev - 1, 'running');
-          return prev - 1;
-        } else {
-          stopTimer();
-          markTimerCompleted();
-          return 0;
-        }
-      });
-    }, 1000);
-  };
-
-  const stopTimer = () => {
-    if (intervalRef.current) {
-      clearInterval(intervalRef.current);
-      intervalRef.current = null;
-    }
+  const stopTimer = async () => {
+    stopIndividualTimer(timer); // Call the function to clear the interval
+    await updateTimerInStorage(remainingTime, 'paused');
+    setIsRunning(false);
   };
 
   const restartTimer = async () => {
-    stopTimer();
     setRemainingTime(timer.duration);
-    setIsRunning(false);
     await updateTimerInStorage(timer.duration, 'paused');
+    setIsRunning(false);
   };
 
-  const deleteTimer = async () => {
-    stopTimer();
-    setTimers(prevTimers => prevTimers.filter(t => t.id !== timer.id));
-    try {
-      const storedTimers = await AsyncStorage.getItem('timers');
-      const timers = storedTimers ? JSON.parse(storedTimers) : [];
-      const updatedTimers = timers.filter(t => t.id !== timer.id);
-      await AsyncStorage.setItem('timers', JSON.stringify(updatedTimers));
-    } catch (error) {
-      console.error('Error deleting timer:', error);
-    }
-  };
   const updateTimerInStorage = async (timeLeft, status) => {
     try {
       setTimers(prevTimers =>
@@ -115,21 +104,21 @@ export default function TimerCard({
     }
   };
 
-  const markTimerCompleted = async () => {
-    try {
-      setIsRunning(false);
-      const storedTimers = await AsyncStorage.getItem('timers');
-      let timers = storedTimers ? JSON.parse(storedTimers) : [];
-      const index = timers.findIndex(t => t.id === timer.id);
-      if (index !== -1) {
-        timers[index].status = 'completed';
-        await AsyncStorage.setItem('timers', JSON.stringify(timers));
+  useEffect(() => {
+    const saveTimerState = async () => {
+      try {
+        const timerState = JSON.stringify({
+          remainingTime: remainingTime,
+          isRunning: isRunning,
+        });
+        await AsyncStorage.setItem(timer.id, timerState); // Unique key for each timer
+      } catch (error) {
+        console.error('Error saving timer state:', error);
       }
-      Alert.alert('Timer Completed', `${timer.name} has finished!`);
-    } catch (error) {
-      console.error('Error marking timer as completed:', error);
-    }
-  };
+    };
+
+    saveTimerState();
+  }, [remainingTime, isRunning, timer.id]); // Add timer.id as a dependency
 
   return (
     <View
@@ -140,7 +129,9 @@ export default function TimerCard({
       <View style={styles.timerHeader}>
         <Text style={styles.timerTitle}>{timer.name}</Text>
         <Text style={styles.timerStatusPaused}>
-          {timer.status.toUpperCase()}
+          {typeof timer.status === 'string'
+            ? timer.status.toUpperCase()
+            : 'PAUSED'}
         </Text>
       </View>
 
@@ -167,7 +158,7 @@ export default function TimerCard({
           <TouchableOpacity onPress={restartTimer}>
             <Image source={imagePaths.restart} />
           </TouchableOpacity>
-          <TouchableOpacity onPress={deleteTimer}>
+          <TouchableOpacity onPress={onDelete}>
             <Image source={imagePaths.delete} style={{width: 27, height: 27}} />
           </TouchableOpacity>
         </View>
